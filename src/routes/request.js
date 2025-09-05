@@ -3,9 +3,9 @@ const requestRouter = express.Router();
 const { userAuth } = require("../middlewares/auth");
 const User = require("../models/user");
 const ConnectionRequest = require("../models/connectionRequest");
+const sendEmail = require("../utils/sendEmail");
 
-const sendEmail = require("../utils/sendEmail")
-
+// -------------------- SEND REQUEST --------------------
 requestRouter.post(
   "/request/send/:status/:toUserId",
   userAuth,
@@ -15,12 +15,6 @@ requestRouter.post(
       const toUserId = req.params.toUserId;
       const status = req.params.status;
 
-      //If user is trying to send connection request to self.
-      // if(fromUserId==toUserId){
-      //   return res.status(400).json({
-      //     message : "Connection request to self not possible"
-      //   });
-      // }
       const allowedStatus = ["ignored", "interested"];
       if (!allowedStatus.includes(status)) {
         return res.status(400).json({
@@ -28,7 +22,6 @@ requestRouter.post(
         });
       }
 
-      //IF my "toUserId" ->user exists in my User collection or not.
       const toUser = await User.findById(toUserId);
       if (!toUser) {
         return res.status(400).json({
@@ -36,7 +29,6 @@ requestRouter.post(
         });
       }
 
-      //IF there is an existing ConnectionRequest in database
       const existingConnectionRequest = await ConnectionRequest.findOne({
         $or: [
           { fromUserId, toUserId },
@@ -58,9 +50,18 @@ requestRouter.post(
 
       const data = await connectionRequest.save();
 
-      const emailRes = await sendEmail.run();
+      // ---------------- EMAIL PART ----------------
+      const subject = "New Connection Request on DevTinder";
+      const body = `${req.user.name} has sent you a connection request!`;
 
-      console.log(emailRes);
+      const emailRes = await sendEmail.run(
+        toUser.email, // recipient
+        req.user.email, // sender
+        subject,
+        body
+      );
+
+      console.log("SES response:", emailRes);
 
       res.json({
         message: "Connection Request sent successfully",
@@ -72,6 +73,7 @@ requestRouter.post(
   }
 );
 
+// -------------------- REVIEW REQUEST --------------------
 requestRouter.post(
   "/request/review/:status/:requestId",
   userAuth,
@@ -80,8 +82,6 @@ requestRouter.post(
       const loggedInUser = req.user;
       const { status, requestId } = req.params;
 
-      //Ayush is sending connection request to Himanshu. Only Himanshu can accept or reject the Ayush connection request.
-      //  Validate the status
       const allowedStatus = ["accepted", "rejected"];
       if (!allowedStatus.includes(status)) {
         return res.status(400).json({
@@ -89,10 +89,6 @@ requestRouter.post(
         });
       }
 
-      // check if the requestId is present in our database or not.
-      // is Himanshu loggedIn user => toUserId
-      // if the existing connection request is only interested then only Himanshu can accept or reject the profile.
-      // requestId should be valid (means present in our database).
       const connectionRequest = await ConnectionRequest.findOne({
         _id: requestId,
         toUserId: loggedInUser._id,
@@ -105,7 +101,6 @@ requestRouter.post(
           .json({ message: "Connection request not found!!" });
       }
 
-      //Now i am safe to change the status.(accept/reject)
       connectionRequest.status = status;
       const data = await connectionRequest.save();
 
