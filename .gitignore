@@ -2,5 +2,6 @@
 node_modules
 vite.config.js
 README.md
+.env
 
 
